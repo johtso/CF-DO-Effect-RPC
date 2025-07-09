@@ -14,38 +14,38 @@ class RpcHello extends RpcGroup.make(
 ) {}
 
 class RpcHelloClient extends Effect.Service<RpcHelloClient>()('RpcHelloClient', {
-  scoped: RpcClient.make(RpcHello)
+  scoped: RpcClient.make(RpcHello),
 }) {}
 
 const RpcHelloLayer = RpcHello.toLayer(
   Effect.gen(function* () {
     return {
-      Hello: () => Effect.succeed('World')
+      Hello: () => Effect.succeed('World'),
     };
   })
 );
 
 const RpcProtocol = RpcClient.layerProtocolHttp({
-	// Cloudflare requires a valid looking URL
+  // Cloudflare requires a valid looking URL
   url: 'http://internal.invalid/api/rpc',
 }).pipe(Layer.provide(RpcSerialization.layerNdjson));
 
 const makeAppLayer = (ctx: DurableObjectState, env: Env) => {
-	// Disable Effect's scheduler's default setTimeout behaviour to avoid possibility of switching to another request
-	// between storage operations..?
+  // Disable Effect's scheduler's default setTimeout behaviour to avoid possibility of switching to another request
+  // between storage operations..?
   const scheduler = new MixedScheduler(Infinity);
   return Layer.mergeAll(RpcHelloLayer, Layer.setScheduler(scheduler));
 };
 
 export class MyDurableObject extends DurableObject<Env> {
-	private handler: (request: Request) => Promise<Response>;
+  private handler: (request: Request) => Promise<Response>;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-		const AppLayer = makeAppLayer(ctx, env)
+    const AppLayer = makeAppLayer(ctx, env);
     const { handler, dispose } = RpcServer.toWebHandler(RpcHello, {
-      layer: Layer.mergeAll(AppLayer, RpcSerialization.layerNdjson, HttpServer.layerContext)
-    })
+      layer: Layer.mergeAll(AppLayer, RpcSerialization.layerNdjson, HttpServer.layerContext),
+    });
     this.handler = handler;
   }
 
@@ -63,7 +63,7 @@ export default {
     const stub = env.MY_DURABLE_OBJECT.get(id);
 
     const RpcHelloClientLive = RpcHelloClient.Default.pipe(
-			// Note: We have to bind the stub's fetch method
+      // Note: We have to bind the stub's fetch method
       Layer.provide(RpcProtocol.pipe(Layer.provide(customFetchHttpClient(stub.fetch.bind(stub)))))
     );
 
