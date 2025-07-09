@@ -1,0 +1,20 @@
+{
+	"name": "durable-object-starter",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"start": "wrangler dev",
+		"cf-typegen": "wrangler types"
+	},
+	"devDependencies": {
+		"typescript": "^5.5.2",
+		"wrangler": "^4.24.0"
+	},
+	"dependencies": {
+		"@effect/platform": "^0.87.11",
+		"@effect/rpc": "^0.64.12",
+		"effect": "^3.16.12"
+	}
+}
