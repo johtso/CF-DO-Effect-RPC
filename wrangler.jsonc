@@ -7,6 +7,7 @@
 	"name": "durable-object-starter",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-07-09",
+	"compatibility_flags": ["nodejs_compat"],
 	"migrations": [
 		{
 			"new_sqlite_classes": [
@@ -23,7 +24,6 @@
 			}
 		]
 	},
-	"compatibility_flags": ["nodejs_compat"],
 	"observability": {
 		"enabled": true
 	}

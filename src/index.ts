@@ -3,7 +3,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { Effect, Layer, ManagedRuntime, Schema } from 'effect';
 import { MixedScheduler } from 'effect/Scheduler';
 import { Rpc, RpcClient, RpcGroup, RpcSerialization, RpcServer } from '@effect/rpc';
-import { FetchHttpClient, HttpApp } from '@effect/platform';
+import { FetchHttpClient, HttpServer } from '@effect/platform';
 
 class RpcHello extends RpcGroup.make(
   Rpc.make('Hello', {
@@ -14,43 +14,43 @@ class RpcHello extends RpcGroup.make(
 ) {}
 
 class RpcHelloClient extends Effect.Service<RpcHelloClient>()('RpcHelloClient', {
-  effect: RpcClient.make(RpcHello).pipe(Effect.scoped),
+  scoped: RpcClient.make(RpcHello)
 }) {}
 
 const RpcHelloLayer = RpcHello.toLayer(
   Effect.gen(function* () {
     return {
-      Hello: () => Effect.succeed('World'),
+      Hello: () => Effect.succeed('World')
     };
   })
 );
 
-const RpcHelloWebHandler = RpcServer.toHttpApp(RpcHello).pipe(
-  Effect.map(HttpApp.toWebHandler),
-  Effect.provide([RpcHelloLayer, RpcSerialization.layerNdjson])
-);
-
 const RpcProtocol = RpcClient.layerProtocolHttp({
-  url: '',
+	// Cloudflare requires a valid looking URL
+  url: 'http://internal.invalid/api/rpc',
 }).pipe(Layer.provide(RpcSerialization.layerNdjson));
 
-const makeRuntime = (ctx: DurableObjectState, env: Env) => {
+const makeAppLayer = (ctx: DurableObjectState, env: Env) => {
+	// Disable Effect's scheduler's default setTimeout behaviour to avoid possibility of switching to another request
+	// between storage operations..?
   const scheduler = new MixedScheduler(Infinity);
-
-  return ManagedRuntime.make(Layer.setScheduler(scheduler));
+  return Layer.mergeAll(RpcHelloLayer, Layer.setScheduler(scheduler));
 };
 
 export class MyDurableObject extends DurableObject<Env> {
-  private runtime: ReturnType<typeof makeRuntime>;
+	private handler: (request: Request) => Promise<Response>;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.runtime = makeRuntime(ctx, env);
+		const AppLayer = makeAppLayer(ctx, env)
+    const { handler, dispose } = RpcServer.toWebHandler(RpcHello, {
+      layer: Layer.mergeAll(AppLayer, RpcSerialization.layerNdjson, HttpServer.layerContext)
+    })
+    this.handler = handler;
   }
 
   override async fetch(request: Request): Promise<Response> {
-    const handler = await this.runtime.runPromise(RpcHelloWebHandler.pipe(Effect.scoped));
-    return handler(request);
+    return this.handler(request);
   }
 }
 
@@ -59,11 +59,12 @@ const customFetchHttpClient = (_fetch: typeof globalThis.fetch) =>
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
-    const id: DurableObjectId = env.MY_DURABLE_OBJECT.idFromName('hello');
+    const id = env.MY_DURABLE_OBJECT.idFromName('hello');
     const stub = env.MY_DURABLE_OBJECT.get(id);
 
     const RpcHelloClientLive = RpcHelloClient.Default.pipe(
-      Layer.provide(RpcProtocol.pipe(Layer.provide(customFetchHttpClient(stub.fetch))))
+			// Note: We have to bind the stub's fetch method
+      Layer.provide(RpcProtocol.pipe(Layer.provide(customFetchHttpClient(stub.fetch.bind(stub)))))
     );
 
     const runtime = ManagedRuntime.make(RpcHelloClientLive);
